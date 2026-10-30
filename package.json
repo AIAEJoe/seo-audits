@@ -1,0 +1,10 @@
+{
+  "name": "seo-audits",
+  "private": true,
+  "type": "module",
+  "description": "AI Authority Engine: SEO and AI-search audits for car dealerships (seo.aiautoengine.com)",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js && bash tests/sql/run.sh && node tests/e2e/run.mjs",
+    "fixture": "node fixtures/dealer-site/server.mjs 4321"
+  }
+}

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIAE Audit bot</title><link rel="stylesheet" href="/assets/app.css"></head>
+<body><main class="doc">
+<h1>AIAE Audit bot</h1>
+<p>Requests with the user agent <code>AIAEAuditBot/1.0 (+https://seo.aiautoengine.com/bot.html)</code> come from AI Authority Engine's website auditing tool.</p>
+<ul>
+<li>It only audits websites whose owner, or an agency they've engaged, has authorized the audit.</li>
+<li>It reads public pages only, and follows <code>robots.txt</code> rules for <code>AIAEAuditBot</code> (and <code>*</code>).</li>
+<li>It requests at most one page every two seconds, two at a time, and stops when a site returns repeated 429 or challenge responses. It never tries to get past a security challenge.</li>
+<li>It doesn't submit forms, log in, or follow links to other websites.</li>
+</ul>
+<p>To ask us to stop, or with any question, contact AI Authority Engine through <a href="https://aiautoengine.com">aiautoengine.com</a>. To block it, add to robots.txt:</p>
+<pre>User-agent: AIAEAuditBot
+Disallow: /</pre>
+</main></body></html>
