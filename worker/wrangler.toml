@@ -1,0 +1,17 @@
+# SEO Audits worker (the crawler). Deploy: Cloudflare → Workers & Pages → Create → Import a repository → seo-audits,
+# root directory "worker". Secrets are set in the dashboard, never here.
+name = "seo-audits-worker"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[workflows]]
+name = "seo-audit"
+binding = "AUDIT_WORKFLOW"
+class_name = "AuditWorkflow"
+
+[observability]
+enabled = true

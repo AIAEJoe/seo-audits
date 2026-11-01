@@ -77,3 +77,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-2); 
 #toast > div { background: #17202e; color: #fff; padding: 11px 14px; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast > div.bad { background: var(--bad); }
 .doc { max-width: 720px; margin: 0 auto; padding: 32px 18px; } .doc pre { background: #fff; border: 1px solid var(--line); padding: 12px; border-radius: 8px; }
+.table-wrap { overflow-x: auto; }
+table.pages { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.pages th { text-align: left; font-size: 12.5px; color: var(--ink-2); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.pages td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.pages tr.warn td { background: var(--warn-bg); }
+table.pages a { word-break: break-word; } .nowrap { white-space: nowrap; }

@@ -108,7 +108,7 @@ await step('new audit: URL checks, authorization required before queueing', asyn
   assert(a.site_url === 'https://www.newsmyrnachevy.com/' && a.status === 'queued' && a.authorized && a.authorized_by === TEAM && a.authorized_at, JSON.stringify(a));
   assert(a.competitors[0].url === 'https://www.delandchevy.com/' && a.sample_plan.used === 10, 'competitors and sample');
   const t = await page.textContent('main');
-  assert(t.includes('GM approved by email') && t.includes('crawler is built in the next stage'), 'authorization and pipeline note shown');
+  assert(t.includes('GM approved by email') && t.includes('checks for queued audits every minute'), 'authorization and queue note shown');
   const folder = await page.inputValue('input[aria-label="Storage folder"]');
   assert(/^seo\/new-smyrna-beach-chevrolet\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\/$/.test(folder), folder);
   await page.screenshot({ path: join(SHOTS, '03-audit.png'), fullPage: true });
@@ -136,6 +136,25 @@ await step('list shows both; cancel and delete work', async () => {
   await page.waitForURL(`${ORIGIN}/`);
   await page.waitForSelector('.row');
   assert((await page.$$('.row')).length === 1, 'deleted');
+});
+await step('a crawled audit shows its stage notes and the sampled pages, with challenges explained', async () => {
+  const id = await page.evaluate(() => {
+    const a = window.__DB.seo_audits[0];
+    Object.assign(a, { status: 'checking', stage_log: [{ stage: 'preflight', done: true, note: 'robots.txt 200; 3 sitemap file(s), 21 URLs; platform: Dealer Inspire' }, { stage: 'sample', done: true, note: '24 pages sampled' }, { stage: 'fetch', done: true, note: '23 pages fetched and rendered; 2 challenged' }] });
+    window.__DB.seo_pages.push(
+      { id: 'p1', audit_id: a.id, url: 'https://www.newsmyrnachevy.com/', page_type: 'home', status_code: 200, title: 'New Smyrna Beach Chevrolet', render_diff: { phones: {} }, screenshot_path: 'x/pages/000.jpg', raw_html_path: 'x/pages/000-raw.html', rendered_html_path: 'x/pages/000-rendered.html', created_at: '2026-11-02T00:00:01Z' },
+      { id: 'p2', audit_id: a.id, url: 'https://www.newsmyrnachevy.com/trade-in/', page_type: 'other', status_code: 200, title: null, challenge: { vendor: 'Cloudflare', signals: ['cf-mitigated'] }, created_at: '2026-11-02T00:00:02Z' });
+    localStorage.setItem('stub-db', JSON.stringify(window.__DB));
+    return a.id;
+  });
+  await page.goto(`${ORIGIN}/audits/${id}`);
+  await page.waitForSelector('table.pages');
+  const t = await page.textContent('main');
+  for (const x of ['platform: Dealer Inspire', '24 pages sampled', 'Crawl finished', 'Phone number swapped by a script', 'Security challenge', 'check Google\'s view in Search Console'])
+    assert(t.includes(x), x);
+  assert(!t.includes('Google is blocked'), 'never claims Google is blocked');
+  await page.click('[data-file="x/pages/000.jpg"]').catch(() => {});
+  await page.screenshot({ path: join(SHOTS, '04-crawled-audit.png'), fullPage: true });
 });
 await step('no console errors or stub schema errors', async () => {
   const stubErrors = await page.evaluate(() => window.__STUB_ERRORS);
