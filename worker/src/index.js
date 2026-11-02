@@ -7,6 +7,7 @@ import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { runAudit } from '../../crawler/pipeline.js';
 import { supabaseSink } from '../../crawler/sink-supabase.js';
 import { renderWithBrowserRun } from '../../crawler/render.js';
+import { runChecksStep } from '../../crawler/run-checks.js';
 
 const STEP = { retries: { limit: 2, delay: '30 seconds', backoff: 'exponential' }, timeout: '10 minutes' };
 
@@ -18,6 +19,8 @@ export class AuditWorkflow extends WorkflowEntrypoint {
     const render = env.CLOUDFLARE_ACCOUNT_ID && env.BROWSER_RUN_TOKEN ? renderWithBrowserRun(env) : null;
     const s = (name, fn) => step.do(name, STEP, async () => { const r = await fn(); return r === undefined ? null : r; });
     try {
+      // checks only: an audit crawled before the checks existed (or whose checks never ran)
+      if (event.payload && event.payload.mode === 'checks') return await s('checks', () => runChecksStep({ auditId, sink }));
       if (!render) await s('no-renderer', () => sink.updateAudit(auditId, { error: 'Browser Run isn\'t set up (CLOUDFLARE_ACCOUNT_ID / BROWSER_RUN_TOKEN), so pages are fetched but not rendered.' }));
       return await runAudit({ auditId, deps: { sink, render }, step: s });
     } catch (e) {
@@ -35,6 +38,13 @@ export async function startQueued(env, sink = supabaseSink(env)) {
     catch (e) {
       if (/already exists|duplicate/i.test(String(e && e.message))) continue;
       await sink.updateAudit(id, { status: 'queued', error: `Couldn't start the crawler: ${String(e && e.message).slice(0, 300)}` });
+    }
+  }
+  // audits whose crawl is done but whose checks never ran (one workflow per audit: the id makes it unique)
+  if (sink.auditsAwaitingChecks) {
+    for (const id of await sink.auditsAwaitingChecks()) {
+      try { await env.AUDIT_WORKFLOW.create({ id: `checks-${id}`, params: { auditId: id, mode: 'checks' } }); started.push(`checks:${id}`); }
+      catch (e) { if (!/already exists|duplicate/i.test(String(e && e.message))) console.error('checks start failed', e); }
     }
   }
   return started;

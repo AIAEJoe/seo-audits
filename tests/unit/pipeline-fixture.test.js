@@ -29,8 +29,8 @@ test.after(async () => { await browser.close(); await site.close(); });
 
 test('the audit finishes, ready for checks, with every stage logged', () => {
   const a = sink.db.seo_audits[0];
-  assert.equal(a.status, 'checking', a.error);
-  assert.deepEqual(a.stage_log.map((s) => s.stage), ['preflight', 'sample', 'fetch', 'crawl']);
+  assert.equal(a.status, 'review', a.error);
+  assert.deepEqual(a.stage_log.map((s) => s.stage), ['preflight', 'sample', 'fetch', 'crawl', 'checks']);
   assert.ok(result.steps.includes('preflight') && result.steps.some((s) => s.startsWith('pages-')) && result.steps.some((s) => s.startsWith('links-')));
 });
 
@@ -144,4 +144,54 @@ test('every row the crawler writes uses real database columns and allowed values
   assert.ok(sink.db.seo_evidence.every((e) => kinds.has(e.kind) && (!e.content || e.content.length <= 20000)));
   assert.ok(sink.db.seo_pages.every((p) => ['start', 'sitemap', 'nav', 'link', 'inventory'].includes(p.discovered_via)));
   assert.ok(sink.db.seo_vehicles_observed.every((v) => ['new', 'used', 'certified', 'unknown'].includes(v.condition)));
+});
+
+// ---------------- Stage 3: the checks, judged against fixtures/dealer-site/EXPECTED.json ----------------
+test('checks: every expected outcome for the fake dealer site', async () => {
+  const { readFileSync } = await import('node:fs');
+  const expected = JSON.parse(readFileSync(new URL('../../fixtures/dealer-site/EXPECTED.json', import.meta.url), 'utf8'));
+  const fs = sink.db.seo_findings;
+  assert.equal(sink.db.seo_audits[0].status, 'review');
+  for (const c of expected.cases) {
+    const url = site.origin + c.url;
+    // city pages are sampled (3 of 5, seeded by URL), so any of them counts for that case
+    const hits = fs.filter((f) => f.rule_id === c.expect.rule && (c.case === 'city_pages' ? f.affected_urls.some((u) => /-chevrolet-dealer\/$/.test(u)) : f.affected_urls.includes(url)));
+    if (c.expect.status === 'none') assert.equal(hits.length, 0, `${c.case}: ${c.expect.rule} must not be reported for ${c.url}`);
+    else {
+      assert.ok(hits.length, `${c.case}: expected ${c.expect.rule} on ${c.url}; got ${fs.map((f) => f.rule_id).join(', ')}`);
+      assert.ok(hits.some((f) => f.status === c.expect.status), `${c.case}: status ${hits.map((f) => f.status)} ≠ ${c.expect.status}`);
+    }
+  }
+});
+
+test('checks: every finding is complete, cites real evidence, and makes no forbidden claims', () => {
+  const evIds = new Set(sink.db.seo_evidence.map((e) => e.id));
+  for (const f of sink.db.seo_findings) {
+    for (const k of ['rule_id', 'category', 'title', 'status', 'priority', 'observed_at', 'significance', 'recommended_fix', 'responsible_party', 'acceptance_criteria'])
+      assert.ok(f[k], `${f.rule_id} missing ${k}`);
+    assert.ok(f.affected_urls.length >= 1, `${f.rule_id} has no URL`);
+    assert.ok(f.evidence_ids.length >= 1 && f.evidence_ids.every((id) => evIds.has(id)), `${f.rule_id} evidence ${f.evidence_ids}`);
+    const text = `${f.title} ${f.significance} ${f.recommended_fix}`;
+    assert.doesNotMatch(text, /(?<!does not show that )google (is|was) blocked|penalt(y|ies|ized)|lost (traffic|sales|revenue|leads)|\$[\d,]+ (in|of) (lost|missed)|bad platform|poor platform/i, `${f.rule_id}: ${text.slice(0, 120)}`);
+  }
+  const ch = sink.db.seo_findings.find((f) => f.rule_id === 'technical.crawler_challenged');
+  assert.match(ch.significance, /does not show that Google is blocked/);
+  const city = sink.db.seo_findings.find((f) => f.rule_id === 'local.interchangeable_city_pages');
+  assert.match(city.recommended_fix, /Do not create more/);
+  const stale = sink.db.seo_findings.find((f) => f.rule_id === 'inventory.schema_stale');
+  assert.equal(stale.facts.vin, '1FTFW1E50MFA00003');
+  assert.ok(stale.observed_at);
+  const late = sink.db.seo_findings.find((f) => f.rule_id === 'inventory.price_loads_late');
+  assert.ok(late && late.affected_urls.includes(site.origin + VEHICLES.delayed.path), 'late price noted as an opportunity');
+  assert.ok(sink.db.seo_findings.some((f) => f.rule_id === 'local.gbp_needs_access' && f.status === 'needs_verification' && f.responsible_party === 'gbp_owner'), 'Business Profile kept separate');
+});
+
+test('checks can be re-run: draft findings replaced, reviewed ones kept', async () => {
+  const { runChecksStep } = await import('../../crawler/run-checks.js');
+  const first = sink.db.seo_findings.length;
+  sink.db.seo_findings[0].review_status = 'approved';
+  const kept = sink.db.seo_findings[0].id;
+  await runChecksStep({ auditId: AUDIT, sink });
+  assert.ok(sink.db.seo_findings.some((f) => f.id === kept), 'approved finding kept');
+  assert.equal(sink.db.seo_findings.length, first + 1, 'drafts replaced, not duplicated (the approved one plus a fresh draft of it)');
 });

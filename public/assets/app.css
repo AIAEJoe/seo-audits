@@ -83,3 +83,20 @@ table.pages th { text-align: left; font-size: 12.5px; color: var(--ink-2); font-
 table.pages td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.pages tr.warn td { background: var(--warn-bg); }
 table.pages a { word-break: break-word; } .nowrap { white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13.5px; cursor: pointer; }
+.chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.findings { display: grid; gap: 8px; }
+.finding { border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.finding > summary { list-style: none; cursor: pointer; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.finding > summary::-webkit-details-marker { display: none; }
+.finding .f-title { flex: 1 1 100%; font-size: 15px; }
+.finding.r-approved { border-color: var(--ok); } .finding.r-rejected { opacity: .6; }
+.f-body { padding: 0 12px 12px; border-top: 1px solid var(--line); }
+.f-body p { margin: 8px 0; font-size: 14.5px; }
+.f-body pre, .ev pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fb; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 12px; max-height: 260px; overflow: auto; }
+.urls { margin: 4px 0; padding-left: 18px; } .urls a { word-break: break-all; }
+.pr-high { background: var(--bad-bg); color: var(--bad); } .pr-medium { background: var(--warn-bg); color: var(--warn); } .pr-low { background: #eef2f7; color: var(--ink-2); }
+.st-confirmed { background: #fde8e7; color: var(--bad); } .st-opportunity { background: var(--info-bg); color: var(--info); } .st-needs_verification { background: var(--warn-bg); color: var(--warn); }
+.rv-approved { background: var(--ok-bg); color: var(--ok); } .rv-rejected { background: #eee; color: #666; }
+.ev-list { display: grid; gap: 8px; margin: 8px 0; } .ev { border-left: 3px solid var(--line); padding-left: 8px; }

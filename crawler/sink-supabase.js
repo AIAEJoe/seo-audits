@@ -31,6 +31,26 @@ export function supabaseSink(env, fetchImpl = fetch) {
         if (!updated || !updated.length) await rest('seo_links', { method: 'POST', body: { audit_id: auditId, to_url: s.url, internal: true, status_code: s.status, checked_at: now, anchor: '(sitemap)' }, prefer: 'return=minimal' });
       }
     },
+    async list(table, auditId) {
+      const out = [];
+      for (let offset = 0; ; offset += 1000) {
+        const rows = await rest(`${table}?audit_id=eq.${auditId}&select=*&order=id.asc&limit=1000&offset=${offset}`);
+        out.push(...rows);
+        if (rows.length < 1000) return out;
+      }
+    },
+    async readFile(path) {
+      const res = await fetchImpl(`${base}/storage/v1/object/seo/${path.split('/').map(encodeURIComponent).join('/')}`, { headers: auth });
+      if (!res.ok) throw new Error(`Storage download ${path}: ${res.status}`);
+      return res.text();
+    },
+    async insertEvidence(rows) { return (await rest('seo_evidence', { method: 'POST', body: rows, prefer: 'return=representation' })).map((r) => r.id); },
+    async clearRuleFindings(auditId) { await rest(`seo_findings?audit_id=eq.${auditId}&drafted_by=eq.rule&review_status=eq.draft`, { method: 'DELETE', prefer: 'return=minimal' }); },
+    /** Audits whose crawl finished but whose checks never ran (crawled before Stage 3, or a stuck run). */
+    async auditsAwaitingChecks(olderThanMs = 15 * 60 * 1000) {
+      const rows = await rest('seo_audits?status=eq.checking&select=id,stage_log&limit=20');
+      return rows.filter((a) => { const c = (a.stage_log || []).find((s) => s.stage === 'crawl'); return c && Date.now() - new Date(c.at).getTime() > olderThanMs && !(a.stage_log || []).some((s) => s.stage === 'checks'); }).map((a) => a.id);
+    },
     async saveFile(path, content, type) {
       const res = await fetchImpl(`${base}/storage/v1/object/seo/${path.split('/').map(encodeURIComponent).join('/')}`, {
         method: 'POST', headers: { ...auth, 'content-type': type || 'application/octet-stream', 'x-upsert': 'true' }, body: content });

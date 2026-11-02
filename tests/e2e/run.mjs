@@ -156,6 +156,40 @@ await step('a crawled audit shows its stage notes and the sampled pages, with ch
   await page.click('[data-file="x/pages/000.jpg"]').catch(() => {});
   await page.screenshot({ path: join(SHOTS, '04-crawled-audit.png'), fullPage: true });
 });
+await step('findings: listed by priority, filtered, evidence opens, approve and undo', async () => {
+  const id = await page.evaluate(() => {
+    const a = window.__DB.seo_audits[0];
+    a.status = 'review';
+    a.stage_log.push({ stage: 'checks', done: true, note: '2 findings: 1 confirmed, 0 opportunities, 1 to verify' });
+    window.__DB.seo_evidence.push({ id: 'e1', audit_id: a.id, page_id: 'p1', kind: 'schema_excerpt', url: 'https://www.newsmyrnachevy.com/inventory/f150/', content: '{"@type":"Car","offers":{"price":41900,"availability":"https://schema.org/InStock"}}', selector: 'rendered: script[type=application/ld+json]', captured_at: '2026-11-02T14:00:00Z' });
+    window.__DB.seo_findings.push(
+      { id: 'f1', audit_id: a.id, rule_id: 'inventory.schema_stale', category: 'inventory', title: 'Vehicle 1FTFW1E50MFA00003 says "sold" but its structured data still says in stock at $41,900', status: 'confirmed', priority: 'high',
+        affected_urls: ['https://www.newsmyrnachevy.com/inventory/f150/'], observed_at: '2026-11-02T14:00:00Z', evidence_ids: ['e1'], significance: 'Search engines may keep showing a sold car.', recommended_fix: 'Update availability when it sells.',
+        responsible_party: 'website_provider', acceptance_criteria: 'Structured data matches.', facts: { vin: '1FTFW1E50MFA00003' }, drafted_by: 'rule', review_status: 'draft', created_at: '2026-11-02T14:00:01Z' },
+      { id: 'f2', audit_id: a.id, rule_id: 'local.gbp_needs_access', category: 'local', title: 'Google Business Profile not reviewed (needs access)', status: 'needs_verification', priority: 'medium',
+        affected_urls: ['https://www.newsmyrnachevy.com/'], observed_at: '2026-11-02T14:00:00Z', evidence_ids: ['e1'], significance: 's', recommended_fix: 'f', responsible_party: 'gbp_owner', acceptance_criteria: 'a', facts: {}, drafted_by: 'rule', review_status: 'draft', created_at: '2026-11-02T14:00:02Z' });
+    localStorage.setItem('stub-db', JSON.stringify(window.__DB));
+    return a.id;
+  });
+  await page.goto(`${ORIGIN}/audits/${id}`);
+  await page.waitForSelector('#findings');
+  const titles = await page.$$eval('.finding .f-title', (e) => e.map((x) => x.textContent));
+  assert(titles[0].includes('1FTFW1E50MFA00003') && titles.length === 2, 'high priority first');
+  await page.click('[data-filter="needs_verification"]');
+  assert((await page.$$('.finding')).length === 1 && (await page.textContent('.finding')).includes('Business Profile'), 'filter');
+  await page.click('[data-filter="all"]');
+  await page.click('[data-fid="f1"] summary');
+  await page.click('[data-load-ev="f1"]');
+  await page.waitForSelector('[data-ev="f1"] pre');
+  assert((await page.textContent('[data-ev="f1"]')).includes('41900') && (await page.textContent('[data-ev="f1"]')).includes('Structured data'), 'evidence shown');
+  await page.click('[data-review="f1"][data-to="approved"]');
+  await page.waitForSelector('#toast >> text=Approved');
+  assert((await db()).seo_findings.find((f) => f.id === 'f1').review_status === 'approved', 'saved');
+  assert(await page.isVisible('[data-fid="f1"] .rv-approved'), 'approved badge, still open');
+  await page.click('[data-review="f1"][data-to="draft"]');
+  await page.waitForSelector('#toast >> text=Back to not reviewed');
+  await page.screenshot({ path: join(SHOTS, '05-findings.png'), fullPage: true });
+});
 await step('no console errors or stub schema errors', async () => {
   const stubErrors = await page.evaluate(() => window.__STUB_ERRORS);
   assert(!errors.length && !stubErrors.length, [...errors, ...stubErrors].join('; '));

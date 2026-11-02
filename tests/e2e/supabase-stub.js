@@ -28,6 +28,7 @@ class Query {
   update(p) { this.op = 'update'; this.payload = p; return this; }
   delete() { this.op = 'delete'; return this; }
   eq(c, v) { checkCol(this.t, c); this.filters.push((r) => r[c] === v); return this; }
+  in(c, vs) { checkCol(this.t, c); this.filters.push((r) => vs.includes(r[c])); return this; }
   order(c, o = {}) { checkCol(this.t, c); this.orders.push([c, o.ascending !== false]); return this; }
   limit(n) { this.lim = n; return this; }
   single() { this.one = 'single'; return this; }

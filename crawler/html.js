@@ -97,7 +97,9 @@ export function microdataTypes(html) {
 /** A short, exact excerpt of the raw HTML around a match, for evidence. */
 export function excerpt(html, needle, radius = 300) {
   const s = String(html || '');
-  const i = typeof needle === 'string' ? s.indexOf(needle) : s.search(needle);
+  let i; let len;
+  if (typeof needle === 'string') { i = s.indexOf(needle); len = needle.length; }
+  else { const m = s.match(needle); i = m ? m.index : -1; len = m ? m[0].length : 0; }
   if (i < 0) return null;
-  return s.slice(Math.max(0, i - radius), Math.min(s.length, i + (typeof needle === 'string' ? needle.length : 0) + radius));
+  return s.slice(Math.max(0, i - radius), Math.min(s.length, i + len + radius));
 }

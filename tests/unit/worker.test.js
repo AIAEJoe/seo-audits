@@ -47,3 +47,11 @@ test('the workflow refuses an unauthorized audit without fetching the site', asy
     assert.equal(steps[0][1], 2, 'steps retry');
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('cron also starts the checks for an audit that was crawled before the checks existed', async () => {
+  const created = [];
+  const env = { AUDIT_WORKFLOW: { create: async ({ id, params }) => { created.push([id, params.mode]); } } };
+  const sink = { claimQueued: async () => [], updateAudit: async () => {}, auditsAwaitingChecks: async () => ['old1'] };
+  assert.deepEqual(await startQueued(env, sink), ['checks:old1']);
+  assert.deepEqual(created, [['checks-old1', 'checks']]);
+});
