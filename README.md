@@ -81,7 +81,7 @@ User agent `AIAEAuditBot/1.0 (+https://seo.aiautoengine.com/bot.html)`; follows 
 1. Cloudflare **Workers Paid** plan ($5/month): Workflows and Browser Run need it.
 2. **Browser Run token:** My Profile → API Tokens → Create Token → Custom token → Permissions: *Account · Browser Run · Edit* → your account → Create. Copy it once.
 3. **Create the worker from GitHub:** Workers & Pages → Create → *Import a repository* → `AIAEJoe/seo-audits` → **Root directory `worker`** → Deploy. It deploys on every push to `main`.
-4. On the worker → Settings → Variables and Secrets, add **secrets**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API; server-side only, never in the Pages project or the browser), `CLOUDFLARE_ACCOUNT_ID` (Workers & Pages overview, right side), `BROWSER_RUN_TOKEN`.
+4. On the worker → Settings → Variables and Secrets, add **secrets**: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API; server-side only, never in the Pages project or the browser), `CLOUDFLARE_ACCOUNT_ID` (Workers & Pages overview, right side), `BROWSER_RUN_TOKEN`, and `RESEND_API_KEY` (the same Resend key Vehicle Portfolios uses; it sends the "audit complete" and "audit failed" emails to joe@aiautoengine.com. Optional: `AUDIT_NOTIFY_EMAIL` to send them elsewhere, comma-separated for several people).
 5. Open `https://seo-audits-worker.<your-subdomain>.workers.dev/health`: every item under `configured` should be `true`.
 6. Queue an audit; it starts within a minute. A 100-page sample takes roughly 20–40 minutes at one request every 2 seconds plus rendering.
 

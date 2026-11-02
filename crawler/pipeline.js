@@ -206,6 +206,7 @@ export async function runAudit({ auditId, deps, step }) {
     return null;
   });
   const checked = await step('checks', () => runChecksStep({ auditId, sink }));
+  if (deps.notify) await step('notify', () => deps.notify(auditId, 'complete').catch((e) => ({ error: e.message })));
   return { pages: results.length, links: targets.length, stopped, findings: checked.findings };
 }
 

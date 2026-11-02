@@ -25,7 +25,7 @@ test('cron claims queued audits and starts one workflow each; an already-running
 test('health endpoint says what is configured, without revealing secrets', async () => {
   const r = await worker.fetch(new Request('https://w.dev/health'), { SUPABASE_URL: 'https://p.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'secret', AUDIT_WORKFLOW: {} });
   const j = await r.json();
-  assert.deepEqual(j.configured, { supabase: true, browser_run: false, workflow: true });
+  assert.deepEqual(j.configured, { supabase: true, browser_run: false, workflow: true, email: false });
   assert.ok(!JSON.stringify(j).includes('secret'));
 });
 
