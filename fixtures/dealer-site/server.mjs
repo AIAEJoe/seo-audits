@@ -92,7 +92,7 @@ function srp(kind, origin) {
   const label = { new: 'New', used: 'Used', certified: 'Certified Pre-Owned' }[kind];
   return page({ title: `${label} Vehicles for Sale | ${DEALER.name}`, canonical: `${origin}/${kind}-vehicles/`, description: `Browse ${label.toLowerCase()} inventory at ${DEALER.name}.`,
     body: `<h1>${label} Vehicles</h1><ul class="srp">${list.map((v) => `<li class="vehicle-card" data-vin="${v.vin}"><a href="${v.path}">${vTitle(v)}</a>
-      <span class="price">${money(v.price)}</span></li>`).join('')}</ul>` });
+      <span class="price">${money(v.price)}</span></li>`).join('')}</ul>${kind === 'used' ? `<a href="${VEHICLES.duplicate.alt}">Quick view: Civic</a>` : ''}` });
 }
 
 const CITIES = ['new-smyrna-beach', 'daytona-beach', 'deland', 'port-orange', 'edgewater'];
@@ -111,12 +111,16 @@ const CHALLENGE = `<!DOCTYPE html><html lang="en-US"><head><title>Just a moment.
 <noscript><div id="challenge-error-title">Enable JavaScript and cookies to continue</div></noscript></div></div>
 <script>(function(){window._cf_chl_opt={cvId:'3',cZone:'www.coastaltestchevy.com',cType:'managed'};})();</script></body></html>`;
 
+// Every request the fixture receives, for checking the crawler's manners (rate, robots, user agent).
+export const requests = [];
+
 export function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
   const p = url.pathname;
   const send = (status, body, type = 'text/html; charset=utf-8', headers = {}) => { res.writeHead(status, { 'content-type': type, ...headers }); res.end(body); };
   const ua = String(req.headers['user-agent'] || '');
+  requests.push({ path: p + url.search, method: req.method, ua, at: Date.now() });
 
   if (p === '/robots.txt') return send(200, `User-agent: *\nDisallow: /search\nDisallow: /cart\n\nUser-agent: AIAEAuditBot\nDisallow: /private-tools/\n\nSitemap: ${origin}/sitemap_index.xml\n`, 'text/plain');
   if (p === '/sitemap_index.xml') return send(200, `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -131,6 +135,8 @@ export function handler(req, res) {
   if (p === '/') return send(200, page({ title: `${DEALER.name} | New & Used Chevrolet in ${DEALER.city}, FL`, canonical: `${origin}/`, description: `${DEALER.name} in ${DEALER.city}, FL.`, head: ld(DEALER_LD),
     body: `<h1>${DEALER.name}</h1><p>New and used Chevrolet cars, trucks and SUVs in ${DEALER.city}.</p>
       <a href="/new-vehicles/">Shop new</a> <a href="/used-vehicles/">Shop used</a> <a href="/promo">This month's promo</a> <a href="/http-old">Old link</a>
+      <a href="/challenge-test/">Trade-in value</a> <a href="/inventory/used-blocked/">Hidden deal</a> <a href="/private-tools/report">Staff tools</a>
+      <a href="https://www.chevrolet.com/">Chevrolet.com</a> <a href="mailto:sales@example.com">Email us</a> <a href="tel:3865550100">Call</a>
       <p>${CITIES.map((c) => `<a href="/${c}-chevrolet-dealer/">${cityName(c)}</a>`).join(' · ')}</p>` }));
   if (p === '/new-vehicles/') return send(200, srp('new', origin));
   if (p === '/used-vehicles/') return send(200, srp('used', origin));
@@ -160,6 +166,7 @@ export function handler(req, res) {
   if (p === '/challenge-test/') return send(200, CHALLENGE, 'text/html; charset=UTF-8', { 'cf-mitigated': 'challenge', server: 'cloudflare' });
   if (p === '/inventory/used-blocked/') return send(403, '<html><head><title>Access Denied</title></head><body><h1>Access Denied</h1>You don\'t have permission to access this server.<p>Reference #18.abc</p></body></html>', 'text/html', { server: 'AkamaiGHost' });
   if (p === '/slow-down/') return send(429, 'Too Many Requests', 'text/plain', { 'retry-after': '30' });
+  if (p.startsWith('/private-tools/')) return send(200, '<h1>Staff only</h1>');
   if (p === '/whoami') return send(200, JSON.stringify({ ua }), 'application/json');
   return send(404, page({ title: 'Page not found', body: '<h1>Page not found</h1>' }));
 }

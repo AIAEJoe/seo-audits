@@ -4,19 +4,28 @@ import { page } from '../layout.js';
 import { navigate } from '../router.js';
 import { STATUS_LABEL, STAGES, FINDING_STATUS, storagePrefix, canStart } from '../audit-model.js';
 
+const TYPE_LABEL = { home: 'Home', srp_new: 'New inventory', srp_used: 'Used inventory', srp_certified: 'CPO inventory', vdp_new: 'New vehicle', vdp_used: 'Used vehicle',
+  vdp_certified: 'CPO vehicle', model: 'Model', finance: 'Finance', service: 'Service', specials: 'Specials', certified_info: 'CPO program', contact: 'Contact', city: 'City page', about: 'About', other: 'Other' };
+const DIFF_LABEL = { title: 'Title changes after JavaScript', meta_description: 'Description changes after JavaScript', meta_robots: 'Robots tag changes after JavaScript',
+  canonical: 'Canonical changes after JavaScript', h1: 'H1 changes after JavaScript', word_count: 'Most text appears only after JavaScript', visible_price: 'Price appears only after JavaScript',
+  phones: 'Phone number swapped by a script', structured_data_types: 'Structured data differs after JavaScript', render_error: 'Could not render' };
+const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
+
 export default async function audit(el, { id }) {
   const p = await page(el, 'audits');
   if (!p) return;
   const { main } = p;
-  let a, counts, reports;
+  let a, counts, reports, pages;
+  let timer = null;
   async function load() {
     a = must(await sb.from('seo_audits').select('*').eq('id', id).maybeSingle());
     if (!a) throw new Error('This audit doesn\'t exist, or you can\'t see it.');
     const [f, pg, r] = await Promise.all([
       sb.from('seo_findings').select('status,review_status').eq('audit_id', id).then(must),
-      sb.from('seo_pages').select('id').eq('audit_id', id).then(must),
+      sb.from('seo_pages').select('id,url,page_type,status_code,title,challenge,render_diff,screenshot_path,raw_html_path,rendered_html_path').eq('audit_id', id).order('created_at').then(must),
       sb.from('seo_reports').select('*').eq('audit_id', id).order('created_at', { ascending: false }).then(must),
     ]);
+    pages = pg;
     counts = { pages: pg.length, findings: f.length, ...Object.fromEntries(Object.keys(FINDING_STATUS).map((k) => [k, f.filter((x) => x.status === k).length])) };
     reports = r;
   }
@@ -25,7 +34,10 @@ export default async function audit(el, { id }) {
 
   function draw() {
     document.title = `${a.dealership_name} · SEO Audits`;
-    const done = new Set((a.stage_log || []).filter((s) => s.done).map((s) => s.stage));
+    const log = a.stage_log || [];
+    const done = new Set(log.filter((s) => s.done).map((s) => s.stage));
+    const noteFor = (k) => (log.find((s) => s.stage === k) || {}).note;
+    const running = ['queued', 'crawling'].includes(a.status);
     const prefix = storagePrefix(a);
     mount(main, html`<div class="page-head"><div><a href="/" class="small">← Audits</a><h1>${a.dealership_name}</h1>
         <div class="sub small"><a href="${a.site_url}" target="_blank" rel="noopener" data-external>${hostOf(a.site_url)}</a> · created ${dateTime(a.created_at)}</div></div>
@@ -40,8 +52,10 @@ export default async function audit(el, { id }) {
     </div>
 
     <div class="card"><h2>Pipeline</h2>
-      ${['queued', 'crawling', 'checking', 'drafting'].includes(a.status) ? html`<p class="hint" style="margin-top:0">The crawler is built in the next stage. Queued audits will start automatically once it's live.</p>` : ''}
-      <ol class="stages">${STAGES.map((s) => html`<li class="${done.has(s.key) ? 'done' : ''}"><b>${s.label}</b><span class="small sub">${s.detail}</span></li>`)}</ol>
+      ${a.status === 'queued' ? html`<p class="hint" style="margin-top:0">Waiting to start. The crawler checks for queued audits every minute.</p>` : ''}
+      ${a.status === 'crawling' ? html`<p class="hint" style="margin-top:0">Crawling politely (one page every 2 seconds), so a 100-page sample takes 20–40 minutes. This page refreshes by itself.</p>` : ''}
+      ${a.status === 'checking' ? html`<p class="hint" style="margin-top:0">Crawl finished. The checks that turn this evidence into findings come in the next build stage.</p>` : ''}
+      <ol class="stages">${STAGES.map((s) => html`<li class="${done.has(s.key) ? 'done' : ''}"><b>${s.label}</b><span class="small sub">${noteFor(s.key) || s.detail}</span></li>`)}</ol>
       ${a.error ? html`<p class="notice bad">${a.error}</p>` : ''}
     </div>
 
@@ -50,6 +64,17 @@ export default async function audit(el, { id }) {
       <div class="card kpi"><b>${counts.findings}</b><span>findings</span></div>
       <div class="card kpi"><span class="small">${Object.entries(FINDING_STATUS).map(([k, l]) => html`<span class="dot d-${k}"></span>${l}: <b>${counts[k]}</b><br>`)}</span></div>
     </div>
+
+    ${pages.length ? html`<div class="card"><h2>Pages sampled</h2>
+      <div class="table-wrap"><table class="pages"><thead><tr><th>Type</th><th>Status</th><th>Page</th><th>Notes</th><th></th></tr></thead><tbody>
+      ${pages.map((p) => html`<tr class="${p.challenge ? 'warn' : ''}"><td><span class="pill">${TYPE_LABEL[p.page_type] || p.page_type}</span></td><td>${p.status_code || '–'}</td>
+        <td><a href="${p.url}" target="_blank" rel="noopener" data-external>${p.title || pathOf(p.url)}</a><div class="small sub">${pathOf(p.url)}</div></td>
+        <td class="small">${p.challenge ? html`<b>Security challenge</b> (${p.challenge.vendor}): our crawler was challenged; check Google's view in Search Console.` : ''}
+          ${p.render_diff ? html`${Object.keys(p.render_diff).map((k) => DIFF_LABEL[k] || k).join(' · ')}` : ''}</td>
+        <td class="nowrap">${p.screenshot_path ? html`<button class="btn ghost sm" data-file="${p.screenshot_path}" title="Phone screenshot">Screenshot</button>` : ''}
+          ${p.rendered_html_path ? html`<button class="btn ghost sm" data-file="${p.rendered_html_path}" title="HTML after JavaScript">Rendered</button>` : ''}
+          ${p.raw_html_path ? html`<button class="btn ghost sm" data-file="${p.raw_html_path}" title="HTML as first served">Raw</button>` : ''}</td></tr>`)}
+      </tbody></table></div></div>` : ''}
 
     <div class="card"><h2>Reports</h2>
       <p class="small">Stored in the private <b>seo</b> bucket in Supabase (Storage → seo), folder:</p>
@@ -77,6 +102,13 @@ export default async function audit(el, { id }) {
       catch (x) { toast(errMsg(x), 'bad'); }
     });
     $('#copyp', main).onclick = () => copyText(`seo/${prefix}`);
+    main.querySelectorAll('[data-file]').forEach((b) => b.addEventListener('click', async () => {
+      const { data, error } = await sb.storage.from('seo').createSignedUrl(b.dataset.file, 300);
+      if (error) { toast(errMsg(error), 'bad'); return; }
+      window.open(data.signedUrl, '_blank', 'noopener');
+    }));
+    clearTimeout(timer);
+    if (running) timer = setTimeout(async () => { if (!main.isConnected) return; try { await load(); draw(); } catch { /* try again next time */ } }, 15000);
     main.querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', async () => {
       const { data, error } = await sb.storage.from('seo').createSignedUrl(b.dataset.dl, 300, { download: true });
       if (error) { toast(errMsg(error), 'bad'); return; }
