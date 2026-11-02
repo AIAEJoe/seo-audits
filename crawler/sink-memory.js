@@ -1,6 +1,6 @@
 // In-memory sink (tests): the same operations the Supabase sink performs, kept in plain arrays.
 export function memorySink(audit) {
-  const db = { seo_audits: [audit], seo_pages: [], seo_links: [], seo_structured_data: [], seo_vehicles_observed: [], seo_evidence: [] };
+  const db = { seo_audits: [audit], seo_pages: [], seo_links: [], seo_structured_data: [], seo_vehicles_observed: [], seo_evidence: [], seo_findings: [] };
   const files = new Map();
   let id = 0;
   return {
@@ -26,5 +26,9 @@ export function memorySink(audit) {
       }
     },
     async saveFile(path, content) { files.set(path, content); },
+    async readFile(path) { if (!files.has(path)) throw new Error(`no file ${path}`); const c = files.get(path); return typeof c === 'string' ? c : new TextDecoder().decode(c); },
+    async list(table, auditId) { return JSON.parse(JSON.stringify(db[table].filter((r) => r.audit_id === auditId))); },
+    async insertEvidence(rows) { return rows.map((r) => { const e = { id: `ev-${++id}`, captured_at: new Date().toISOString(), ...r }; db.seo_evidence.push(e); return e.id; }); },
+    async clearRuleFindings(auditId) { db.seo_findings = db.seo_findings.filter((f) => !(f.audit_id === auditId && f.drafted_by === 'rule' && (f.review_status || 'draft') === 'draft')); },
   };
 }

@@ -10,7 +10,7 @@ The audit collects evidence first and writes conclusions second. Every finding i
 |---|---|---|
 | 1 | Foundation: app, sign-in, database, fake dealer site, tests | **built** |
 | 2 | Crawler: preflight, sampling, raw + rendered fetch, challenge detection, evidence | **built** |
-| 3 | Checks: technical, inventory and pricing, local | next |
+| 3 | Checks: technical, inventory and pricing, local | **built** |
 | 4 | Content, mobile experience, page speed, AI readiness, AI Visibility Snapshot upload | |
 | 5 | Claude write-ups and the review screen | |
 | 6 | Reports: detailed audit, GM summary, 30/60/90 plan, provider tickets, meeting email | |
@@ -51,6 +51,18 @@ A Cloudflare Worker (`worker/`) checks every minute for queued, authorized audit
 Then the audit moves to **Checking** for Stage 3.
 
 **Challenges** (`crawler/challenge.js`): Cloudflare, Akamai, Imperva, PerimeterX/HUMAN, DataDome, Sucuri and CAPTCHA walls, including ones that answer **200 OK** ("Just a moment…", `cf-mitigated: challenge`, near-empty pages with a "checking your browser" notice). A challenged page is never read as content (no title, no facts), the challenge itself is saved as evidence, and the page shows "our crawler was challenged; check Google's view in Search Console". A reCAPTCHA on an ordinary contact form isn't a challenge.
+
+## The checks (Stage 3): `crawler/checks.js`, `crawler/run-checks.js`
+
+Deterministic rules run on the stored crawl evidence right after the crawl (and, for audits crawled earlier, the worker's cron starts them). Each finding has a status (confirmed / opportunity / needs verification), priority, affected URLs, observation time, cited evidence, why it matters, the fix, who fixes it and acceptance criteria. No model is involved; Stage 5 rewrites the prose and can't add findings. Re-running replaces draft findings and keeps reviewed ones. The audit then shows **Ready for review**, and each finding can be opened (evidence included), approved, rejected or undone; only approved findings go into reports.
+
+| Area | Rules |
+|---|---|
+| Technical | challenged pages (needs verification, never "Google is blocked"), robots.txt blocking key pages for Googlebot, unreachable sitemaps, sitemap URLs that don't load, noindex pages in the sitemap, broken internal links, redirect chains, the same vehicle at several URLs without one canonical, canonical changing after JavaScript, missing/duplicate titles, missing descriptions, broken JSON-LD, text that only appears after JavaScript |
+| Inventory | visible price ≠ structured-data price (conditional offers excluded), sold car with in-stock schema, no visible price, price that loads late (opportunity), no vehicle offer in structured data (opportunity; rich results retired), certification claims that disagree between pages, the same incentive at different amounts on the specials page and a vehicle page, dealer fees listed outside the price (needs verification: a compliance question) |
+| Local | no dealer identity in structured data, structured-data phone not on the page (call tracking excluded), interchangeable city pages (improve or consolidate; never "create more"), hours not found as text, Google Business Profile (always "needs access", kept separate) |
+
+`fixtures/dealer-site/EXPECTED.json` is the test: a full crawl of the fake dealer site must produce every expected finding, with the expected status, and nothing where the answer is "none".
 
 ## The crawler's manners
 

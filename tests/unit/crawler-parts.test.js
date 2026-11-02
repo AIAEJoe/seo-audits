@@ -133,12 +133,12 @@ test('fetcher: identifies itself, spaces requests, at most two at a time, stays 
   const fakeFetch = async (url, opts) => { inflight++; peak = Math.max(peak, inflight); log.push({ url, at: Date.now(), ua: opts.headers['user-agent'] });
     await new Promise((r) => setTimeout(r, 60)); inflight--;
     return new Response('<title>x</title>', { status: 200, headers: { 'content-type': 'text/html' } }); };
-  const f = createFetcher({ siteUrl: 'https://www.d.com/', fetchImpl: fakeFetch, gapMs: 40 });
+  const f = createFetcher({ siteUrl: 'https://www.d.com/', fetchImpl: fakeFetch, gapMs: 100 });
   const rs = await Promise.all(['/a', '/b', '/c', '/d', '/e'].map((p) => f.get('https://www.d.com' + p)));
   assert.ok(rs.every((r) => r.status === 200));
   assert.ok(peak <= 2, `peak ${peak}`);
   const times = log.map((l) => l.at).sort((a, b) => a - b);
-  for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 35, `gap ${times[i] - times[i - 1]}`);
+  for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 95, `gap ${times[i] - times[i - 1]}`);
   assert.match(log[0].ua, /AIAEAuditBot\/1\.0/);
   assert.equal((await f.get('https://other.com/x')).error, 'outside the audited website');
   assert.equal((await f.get('http://169.254.169.254/')).error, 'not a public web address');
@@ -165,4 +165,10 @@ test('fetcher: redirect chains recorded; honours Retry-After once; stops after r
   for (let i = 0; i < 5; i++) await f.get(`https://d.com/blocked${i}`);
   assert.match(f.stopped, /stopped instead of pushing on/);
   await assert.rejects(() => f.get('https://d.com/after'), /stopped/);
+});
+
+test('evidence excerpts include the whole matched tag', async () => {
+  const { excerpt } = await import('../../crawler/html.js');
+  assert.equal(excerpt('<head><title>Used Trucks</title></head>', /<title\b[^>]*>[\s\S]*?<\/title>/i, 0), '<title>Used Trucks</title>');
+  assert.equal(excerpt('abc $52,995 def', '$52,995', 2), 'c $52,995 d');
 });

@@ -10,9 +10,10 @@ import { samplePages, DISCOVERY_TYPES } from './sample.js';
 import { pageFacts, pageLinks, structuredData, vehicleFacts, phones } from './extract.js';
 import { renderDiff } from './diff.js';
 import { detectChallenge } from './challenge.js';
-import { excerpt } from './html.js';
+import { excerpt, metas } from './html.js';
 import { BOT_TOKEN, MIN_GAP_MS } from './constants.js';
 import { storagePrefix } from '../public/js/audit-model.js';
+import { runChecksStep } from './run-checks.js';
 
 const PAGE_BATCH = 3;
 const LINK_BATCH = 25;
@@ -176,8 +177,15 @@ export async function runAudit({ auditId, deps, step }) {
       const statuses = [];
       for (const u of batch) {
         try {
-          let res = await f.get(u, { method: 'HEAD', body: false });
-          if ([405, 501].includes(res.status) || res.error) res = await f.get(u, { body: false });
+          // sitemap URLs are read in full (to see a noindex); other links only need their status
+          const fromSitemap = pre.sitemapSample.includes(u);
+          let res = fromSitemap ? await f.get(u) : await f.get(u, { method: 'HEAD', body: false });
+          if (!fromSitemap && ([405, 501].includes(res.status) || res.error)) res = await f.get(u, { body: false });
+          if (fromSitemap && res.status === 200 && !res.challenge) {
+            const robotsMeta = metas(res.body || '').robots || '';
+            const xr = (res.headers && res.headers['x-robots-tag']) || '';
+            if (/noindex/i.test(`${robotsMeta} ${xr}`)) await sink.addEvidence({ audit_id: auditId, kind: 'sitemap', url: u, content: `Listed in the sitemap; the page says noindex (${[robotsMeta && `meta robots: ${robotsMeta}`, xr && `X-Robots-Tag: ${xr}`].filter(Boolean).join('; ')}).` });
+          }
           statuses.push({ url: u, status: res.status || null, final_url: res.finalUrl || null, hops: res.chain ? res.chain.map((c) => c.status) : [], challenge: !!res.challenge, error: res.error || null });
         } catch (e) { if (e instanceof CrawlStopped) return { statuses, stopped: e.message }; throw e; }
       }
@@ -197,7 +205,8 @@ export async function runAudit({ auditId, deps, step }) {
     await sink.updateAudit(auditId, { status: 'checking', stage_log: log, error: stopped ? `Crawl stopped early: ${stopped} Findings that depend on the missing pages will be marked "needs verification".` : null });
     return null;
   });
-  return { pages: results.length, links: targets.length, stopped };
+  const checked = await step('checks', () => runChecksStep({ auditId, sink }));
+  return { pages: results.length, links: targets.length, stopped, findings: checked.findings };
 }
 
 /** One page: raw fetch, browser render, facts from both, the difference, and evidence. */
