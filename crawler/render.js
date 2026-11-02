@@ -54,14 +54,21 @@ export function renderWithBrowserRun(env, fetchImpl = fetch) {
   };
 }
 
-/** Same contract with a local Playwright browser (tests). */
-export function renderWithPlaywright(browser, { settleMs = SETTLE_MS } = {}) {
+export const phoneContextOptions = (userAgent = USER_AGENT) => ({ userAgent, viewport: { width: VIEWPORT.width, height: VIEWPORT.height },
+  deviceScaleFactor: VIEWPORT.deviceScaleFactor, isMobile: true, hasTouch: true, locale: 'en-US' });
+
+/** Same contract with a Playwright browser: the tests, and the GitHub Actions runner. Pass `context` to keep one
+ *  phone context (and its cookies) for the whole audit; otherwise each render gets a fresh one. */
+export function renderWithPlaywright(browser, { settleMs = SETTLE_MS, userAgent = USER_AGENT, context = null } = {}) {
+  let ready = null;
   return async function render(url, { screenshot = false } = {}) {
     const started = Date.now();
-    const ctx = await browser.newContext({ userAgent: USER_AGENT, viewport: { width: VIEWPORT.width, height: VIEWPORT.height }, deviceScaleFactor: VIEWPORT.deviceScaleFactor, isMobile: true, hasTouch: true });
+    const ctx = context || await browser.newContext(phoneContextOptions(userAgent));
+    let page = null;
     try {
-      await ctx.addInitScript(TIMELINE_SCRIPT);
-      const page = await ctx.newPage();
+      if (!context) await ctx.addInitScript(TIMELINE_SCRIPT);
+      else await (ready ||= ctx.addInitScript(TIMELINE_SCRIPT));
+      page = await ctx.newPage();
       let status = null;
       try {
         const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
@@ -71,6 +78,6 @@ export function renderWithPlaywright(browser, { settleMs = SETTLE_MS } = {}) {
       const html = await page.content();
       const shot = screenshot ? new Uint8Array(await page.screenshot({ type: 'jpeg', quality: 70 })) : null;
       return { url, status, html: stripTimeline(html), timeline: readTimeline(html), screenshot: shot, screenshotType: 'image/jpeg', renderedAt: new Date(started).toISOString(), ms: Date.now() - started };
-    } finally { await ctx.close(); }
+    } finally { if (context) { if (page) await page.close().catch(() => {}); } else await ctx.close(); }
   };
 }

@@ -85,6 +85,17 @@ User agent `AIAEAuditBot/1.0 (+https://seo.aiautoengine.com/bot.html)`; follows 
 5. Open `https://seo-audits-worker.<your-subdomain>.workers.dev/health`: every item under `configured` should be `true`.
 6. Queue an audit; it starts within a minute. A 100-page sample takes roughly 20–40 minutes at one request every 2 seconds plus rendering.
 
+### Crawling from GitHub Actions with a real Chrome (recommended)
+Many dealer platforms' bot protection blocks requests from Cloudflare workers. With `GITHUB_TOKEN` set on the worker,
+the worker still queues and claims audits, but the crawl runs on GitHub Actions (`.github/workflows/crawl.yml`) in a
+real Chrome with a standard Chrome identity. Same pacing (one page every 2 s), robots.txt still honoured, and nothing
+is done to solve or get around a security challenge: if one stays, it's logged and, after several, the crawl stops.
+1. GitHub → seo-audits → Settings → Secrets and variables → Actions → New repository secret: `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY` (optional `AUDIT_NOTIFY_EMAIL`).
+2. GitHub → your picture → Settings → Developer settings → Fine-grained tokens → Generate: repository access *Only
+   AIAEJoe/seo-audits*, permission *Actions: Read and write*. Add it to the worker as the secret `GITHUB_TOKEN`.
+3. `/health` shows `github_runner: true`. Each audit's run is under the repo's Actions tab (about 30–45 minutes).
+
 ## Tests
 
 ```

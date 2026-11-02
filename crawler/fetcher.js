@@ -1,5 +1,5 @@
 // The controlled crawler: polite, honest HTTP fetching.
-//  * identifies itself (USER_AGENT), never pretends to be a browser or Googlebot;
+//  * identifies itself as AIAEAuditBot (USER_AGENT) unless a runner passes a browser identity; never claims to be Googlebot;
 //  * one request at a time per MIN_GAP_MS per site, at most MAX_CONCURRENCY in flight;
 //  * follows redirects by hand so the whole chain is recorded;
 //  * honours Retry-After on 429/503 (up to MAX_RETRY_AFTER_S), and stops after STOP_AFTER_BLOCKS consecutive
@@ -16,7 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const KEEP_HEADERS = ['content-type', 'content-length', 'cache-control', 'x-robots-tag', 'link', 'location', 'server', 'cf-mitigated', 'cf-ray', 'retry-after',
   'last-modified', 'etag', 'vary', 'x-cache', 'x-powered-by', 'content-language', 'strict-transport-security'];
 
-export function createFetcher({ siteUrl, fetchImpl = fetch, gapMs = MIN_GAP_MS, concurrency = MAX_CONCURRENCY, allowPrivate = false, now = Date.now, wait = sleep } = {}) {
+export function createFetcher({ siteUrl, fetchImpl = fetch, userAgent = USER_AGENT, gapMs = MIN_GAP_MS, concurrency = MAX_CONCURRENCY, allowPrivate = false, now = Date.now, wait = sleep } = {}) {
   let last = 0;
   let active = 0;
   const queue = [];
@@ -38,7 +38,7 @@ export function createFetcher({ siteUrl, fetchImpl = fetch, gapMs = MIN_GAP_MS, 
     await slot();
     try {
       count++;
-      const res = await fetchImpl(url, { method, redirect: 'manual', headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      const res = await fetchImpl(url, { method, redirect: 'manual', headers: { 'user-agent': userAgent, accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       return res;
     } finally { release(); }
   }
