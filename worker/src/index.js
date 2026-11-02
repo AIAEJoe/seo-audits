@@ -2,12 +2,14 @@
 //   * Every minute (cron) it claims up to 3 queued, authorized audits and starts a workflow for each.
 //   * The workflow runs crawler/pipeline.js; every step is retried on failure and survives restarts.
 // Secrets (Cloudflare → this worker → Settings → Variables and Secrets): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-// CLOUDFLARE_ACCOUNT_ID, BROWSER_RUN_TOKEN (an API token with "Browser Run - Edit").
+// CLOUDFLARE_ACCOUNT_ID, BROWSER_RUN_TOKEN (an API token with "Browser Run - Edit"), RESEND_API_KEY (audit emails).
+// Optional: AUDIT_NOTIFY_EMAIL (default joe@aiautoengine.com), AUDIT_FROM_EMAIL, APP_URL.
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { runAudit } from '../../crawler/pipeline.js';
 import { supabaseSink } from '../../crawler/sink-supabase.js';
 import { renderWithBrowserRun } from '../../crawler/render.js';
 import { runChecksStep } from '../../crawler/run-checks.js';
+import { sendAuditEmail } from '../../crawler/notify.js';
 
 const STEP = { retries: { limit: 2, delay: '30 seconds', backoff: 'exponential' }, timeout: '10 minutes' };
 
@@ -20,11 +22,17 @@ export class AuditWorkflow extends WorkflowEntrypoint {
     const s = (name, fn) => step.do(name, STEP, async () => { const r = await fn(); return r === undefined ? null : r; });
     try {
       // checks only: an audit crawled before the checks existed (or whose checks never ran)
-      if (event.payload && event.payload.mode === 'checks') return await s('checks', () => runChecksStep({ auditId, sink }));
+      const notify = (id, kind) => sendAuditEmail(env, sink, id, kind);
+      if (event.payload && event.payload.mode === 'checks') {
+        const r = await s('checks', () => runChecksStep({ auditId, sink }));
+        await s('notify', () => notify(auditId, 'complete').catch((e) => ({ error: e.message })));
+        return r;
+      }
       if (!render) await s('no-renderer', () => sink.updateAudit(auditId, { error: 'Browser Run isn\'t set up (CLOUDFLARE_ACCOUNT_ID / BROWSER_RUN_TOKEN), so pages are fetched but not rendered.' }));
-      return await runAudit({ auditId, deps: { sink, render }, step: s });
+      return await runAudit({ auditId, deps: { sink, render, notify }, step: s });
     } catch (e) {
       await step.do('mark-failed', STEP, async () => { await sink.updateAudit(auditId, { status: 'failed', error: String(e && e.message ? e.message : e).slice(0, 500) }); return null; });
+      await step.do('notify-failed', STEP, async () => { try { await sendAuditEmail(env, sink, auditId, 'failed'); } catch { /* the failure is already on the audit page */ } return null; });
       throw e;
     }
   }
@@ -56,7 +64,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/health') {
       return Response.json({ ok: true, app: 'seo-audits-worker', configured: {
-        supabase: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY), browser_run: !!(env.CLOUDFLARE_ACCOUNT_ID && env.BROWSER_RUN_TOKEN), workflow: !!env.AUDIT_WORKFLOW } });
+        supabase: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY), browser_run: !!(env.CLOUDFLARE_ACCOUNT_ID && env.BROWSER_RUN_TOKEN), workflow: !!env.AUDIT_WORKFLOW, email: !!env.RESEND_API_KEY } });
     }
     return new Response('Not found', { status: 404 });
   },
