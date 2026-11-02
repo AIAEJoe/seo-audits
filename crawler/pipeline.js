@@ -36,7 +36,7 @@ async function sha256(text) {
 const cap = (s, n = 20000) => (s == null ? null : String(s).slice(0, n));
 
 /**
- * deps: { sink, render, fetchImpl, allowPrivate, gapMs, wait }
+ * deps: { sink, render, fetchImpl, userAgent, notify, allowPrivate, gapMs, wait }
  * step(name, fn): durable step runner (Workflows) or a plain call (tests).
  */
 export async function runAudit({ auditId, deps, step }) {
@@ -57,7 +57,7 @@ export async function runAudit({ auditId, deps, step }) {
   const prefix = storagePrefix(audit);
   const log = [];
   const stage = async (key, note) => { log.push({ stage: key, done: true, at: new Date().toISOString(), note }); await sink.updateAudit(auditId, { stage_log: log }); };
-  const fetcher = () => createFetcher({ siteUrl: site, fetchImpl: deps.fetchImpl, gapMs, allowPrivate: deps.allowPrivate });
+  const fetcher = () => createFetcher({ siteUrl: site, fetchImpl: deps.fetchImpl, userAgent: deps.userAgent, gapMs, allowPrivate: deps.allowPrivate });
   const cancelled = async () => (await sink.getAudit(auditId)).status === 'cancelled';
 
   await step('start', () => sink.updateAudit(auditId, { status: 'crawling', started_at: new Date().toISOString(), error: null, stage_log: [] }).then(() => null));

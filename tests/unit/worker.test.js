@@ -25,7 +25,7 @@ test('cron claims queued audits and starts one workflow each; an already-running
 test('health endpoint says what is configured, without revealing secrets', async () => {
   const r = await worker.fetch(new Request('https://w.dev/health'), { SUPABASE_URL: 'https://p.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'secret', AUDIT_WORKFLOW: {} });
   const j = await r.json();
-  assert.deepEqual(j.configured, { supabase: true, browser_run: false, workflow: true, email: false });
+  assert.deepEqual(j.configured, { supabase: true, browser_run: false, workflow: true, email: false, github_runner: false });
   assert.ok(!JSON.stringify(j).includes('secret'));
 });
 
@@ -54,4 +54,22 @@ test('cron also starts the checks for an audit that was crawled before the check
   const sink = { claimQueued: async () => [], updateAudit: async () => {}, auditsAwaitingChecks: async () => ['old1'] };
   assert.deepEqual(await startQueued(env, sink), ['checks:old1']);
   assert.deepEqual(created, [['checks-old1', 'checks']]);
+});
+
+test('with GITHUB_TOKEN set, queued audits are sent to the GitHub Actions runner', async () => {
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { calls.push({ url, body: JSON.parse(opts.body), auth: opts.headers.authorization }); return new Response(null, { status: 204 }); };
+  try {
+    const env = { GITHUB_TOKEN: 'ghp_x', AUDIT_WORKFLOW: { create: async () => { throw new Error('should not use the Cloudflare workflow'); } } };
+    assert.deepEqual(await startQueued(env, { claimQueued: async () => ['a1'], updateAudit: async () => {} }), ['a1']);
+    assert.equal(calls[0].url, 'https://api.github.com/repos/AIAEJoe/seo-audits/actions/workflows/crawl.yml/dispatches');
+    assert.deepEqual(calls[0].body, { ref: 'main', inputs: { audit_id: 'a1' } });
+    assert.equal(calls[0].auth, 'Bearer ghp_x');
+    globalThis.fetch = async () => new Response('Bad credentials', { status: 401 });
+    const updates = [];
+    assert.deepEqual(await startQueued(env, { claimQueued: async () => ['a2'], updateAudit: async (id, p) => updates.push([id, p]) }), []);
+    assert.equal(updates[0][1].status, 'queued', 'put back in the queue');
+    assert.match(updates[0][1].error, /GitHub 401/);
+  } finally { globalThis.fetch = real; }
 });

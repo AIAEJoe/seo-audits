@@ -1,0 +1,35 @@
+# Runs one SEO audit with a real Chrome. Started by the seo-audits-worker when an audit is queued
+# (or by hand: Actions → Crawl audit → Run workflow → paste the audit id).
+name: Crawl audit
+on:
+  workflow_dispatch:
+    inputs:
+      audit_id:
+        description: Audit id (from the audit page address)
+        required: true
+concurrency:
+  group: audit-${{ inputs.audit_id }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chrome
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Crawl
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          AUDIT_NOTIFY_EMAIL: ${{ secrets.AUDIT_NOTIFY_EMAIL }}
+          AUDIT_ID: ${{ inputs.audit_id }}
+        run: node runner/crawl.mjs

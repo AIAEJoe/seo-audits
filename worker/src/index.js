@@ -4,6 +4,15 @@
 // Secrets (Cloudflare → this worker → Settings → Variables and Secrets): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 // CLOUDFLARE_ACCOUNT_ID, BROWSER_RUN_TOKEN (an API token with "Browser Run - Edit"), RESEND_API_KEY (audit emails).
 // Optional: AUDIT_NOTIFY_EMAIL (default joe@aiautoengine.com), AUDIT_FROM_EMAIL, APP_URL.
+// GITHUB_TOKEN (fine-grained, seo-audits repo, Actions: read and write): when set, crawls run on GitHub Actions with a
+// real Chrome (.github/workflows/crawl.yml) instead of from Cloudflare, which many dealer sites' bot protection blocks.
+const GH_REPO = 'AIAEJoe/seo-audits';
+export async function dispatchGithub(env, auditId, fetchImpl = fetch) {
+  const res = await fetchImpl(`https://api.github.com/repos/${env.GITHUB_REPO || GH_REPO}/actions/workflows/crawl.yml/dispatches`, {
+    method: 'POST', headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'user-agent': 'seo-audits-worker', 'content-type': 'application/json' },
+    body: JSON.stringify({ ref: 'main', inputs: { audit_id: auditId } }) });
+  if (!res.ok) throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { runAudit } from '../../crawler/pipeline.js';
 import { supabaseSink } from '../../crawler/sink-supabase.js';
@@ -42,7 +51,11 @@ export async function startQueued(env, sink = supabaseSink(env)) {
   const ids = await sink.claimQueued(3);
   const started = [];
   for (const id of ids) {
-    try { await env.AUDIT_WORKFLOW.create({ id: `audit-${id}`, params: { auditId: id } }); started.push(id); }
+    try {
+      if (env.GITHUB_TOKEN) await dispatchGithub(env, id);
+      else await env.AUDIT_WORKFLOW.create({ id: `audit-${id}`, params: { auditId: id } });
+      started.push(id);
+    }
     catch (e) {
       if (/already exists|duplicate/i.test(String(e && e.message))) continue;
       await sink.updateAudit(id, { status: 'queued', error: `Couldn't start the crawler: ${String(e && e.message).slice(0, 300)}` });
@@ -64,7 +77,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/health') {
       return Response.json({ ok: true, app: 'seo-audits-worker', configured: {
-        supabase: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY), browser_run: !!(env.CLOUDFLARE_ACCOUNT_ID && env.BROWSER_RUN_TOKEN), workflow: !!env.AUDIT_WORKFLOW, email: !!env.RESEND_API_KEY } });
+        supabase: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY), browser_run: !!(env.CLOUDFLARE_ACCOUNT_ID && env.BROWSER_RUN_TOKEN), workflow: !!env.AUDIT_WORKFLOW, email: !!env.RESEND_API_KEY, github_runner: !!env.GITHUB_TOKEN } });
     }
     return new Response('Not found', { status: 404 });
   },
